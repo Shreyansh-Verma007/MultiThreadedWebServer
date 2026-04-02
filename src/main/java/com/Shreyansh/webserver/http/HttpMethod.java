@@ -1,4 +1,5 @@
 package com.Shreyansh.webserver.http;
 
-public class HttpMethod {
+public enum HttpMethod {
+    GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
 }

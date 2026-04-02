@@ -3,22 +3,22 @@ package com.Shreyansh.webserver.http;
 import java.util.Map;
 
 public class HttpRequest {
-    private Method method;
+    private HttpMethod httpMethod;
     private String path;
     private Map<String, String> headers;
     private String body;
     private String version;
 
-    public HttpRequest(Method method, String path, String version, Map<String, String> headers, String body) {
-        this.method = method;
+    public HttpRequest(HttpMethod httpMethod, String path, String version, Map<String, String> headers, String body) {
+        this.httpMethod = httpMethod;
         this.path = path;
         this.version = version;
         this.headers = headers;
         this.body = body;
     }
 
-    public Method getMethod() {
-        return method;
+    public HttpMethod getMethod() {
+        return httpMethod;
     }
     public String getPath() {
         return path;

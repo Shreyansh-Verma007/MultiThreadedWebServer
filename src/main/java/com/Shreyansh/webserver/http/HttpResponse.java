@@ -6,17 +6,17 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class HttpResponse {
-    private Status status;
+    private HttpStatus httpStatus;
     private Map<String, String> headers;
     private byte[] body;
 
     public HttpResponse() {
-        this.status = Status.OK;
+        this.httpStatus = HttpStatus.OK;
         this.headers = new HashMap<>();
         this.body = new byte[0];
     }
-    public void setStatus(Status status) {
-        this.status = status;
+    public void setStatus(HttpStatus httpStatus) {
+        this.httpStatus = httpStatus;
     }
     public void addHeaders(String key, String value) {
         headers.put(key, value);
@@ -31,14 +31,14 @@ public class HttpResponse {
     }
 
     public void send(OutputStream out) throws IOException {
-        String statusLine = "HTTP/1.1 " + status.getCode() + " " + status.getMessage() + "\r\n";
+        String statusLine = "HTTP/1.1 " + httpStatus.getCode() + " " + httpStatus.getMessage() + "\r\n";
         out.write(statusLine.getBytes());
 
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             String headerLine = entry.getKey() + ": " + entry.getValue() + "\r\n";
             out.write(headerLine.getBytes());
         }
-        
+
         out.write("\r\n".getBytes());
         out.write(body);
         out.flush();

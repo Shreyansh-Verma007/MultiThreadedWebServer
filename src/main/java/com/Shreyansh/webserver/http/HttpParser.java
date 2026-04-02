@@ -9,7 +9,7 @@ import java.util.Map;
 
 public class HttpParser {
     public static HttpRequest parseRequest(InputStream inputStream) throws IOException {
-        Method method;
+        HttpMethod httpMethod;
         String path;
         String version;
         Map<String, String> headers = new HashMap<>();
@@ -18,7 +18,7 @@ public class HttpParser {
         BufferedReader br = new BufferedReader(new InputStreamReader(inputStream));
 
         String[] line1 = br.readLine().split(" ");
-        method = Method.valueOf(line1[0]);
+        httpMethod = HttpMethod.valueOf(line1[0]);
         path = line1[1];
         version = line1[2];
 
@@ -42,6 +42,6 @@ public class HttpParser {
             body = new String(buffer);
         }
 
-        return new HttpRequest(method, path, version, headers, body);
+        return new HttpRequest(httpMethod, path, version, headers, body);
     }
 }
