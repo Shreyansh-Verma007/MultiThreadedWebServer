@@ -1,5 +1,7 @@
 package com.Shreyansh.webserver.core;
 
+import com.Shreyansh.webserver.routing.Router;
+
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -10,11 +12,13 @@ public class Server {
     private final int port;
     private final ExecutorService executor;
     private boolean isRunning;
+    private final Router router;
 
-    public Server(int port, int poolSize) {
+    public Server(int port, int poolSize, Router router) {
         this.port = port;
         this.isRunning = true;
         this.executor = Executors.newFixedThreadPool(poolSize);
+        this.router = router;
     }
 
     public void start() {
@@ -23,7 +27,7 @@ public class Server {
 
             while (this.isRunning) {
                 Socket client = serverSocket.accept();
-                RequestProcessor processor = new RequestProcessor(client);
+                RequestProcessor processor = new RequestProcessor(client, this.router);
                 executor.execute(processor);
             }
         }

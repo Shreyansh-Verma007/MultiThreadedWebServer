@@ -4,14 +4,18 @@ import com.Shreyansh.webserver.http.HttpParser;
 import com.Shreyansh.webserver.http.HttpRequest;
 import com.Shreyansh.webserver.http.HttpResponse;
 import com.Shreyansh.webserver.http.HttpStatus;
+import com.Shreyansh.webserver.routing.Router;
+
 import java.io.*;
 import java.net.Socket;
 
 public class RequestProcessor implements Runnable {
     private final Socket client;
+    private final Router router;
 
-    public RequestProcessor(Socket client) {
+    public RequestProcessor(Socket client, Router router) {
         this.client = client;
+        this.router = router;
     }
 
     @Override
@@ -19,13 +23,13 @@ public class RequestProcessor implements Runnable {
         try {
             InputStream inputStream = client.getInputStream();
             OutputStream outputStream = client.getOutputStream();
+
             HttpRequest request = HttpParser.parseRequest(inputStream);
+
             System.out.println("Received: " + request.getMethod() + " " + request.getPath());
-            HttpResponse response = new HttpResponse();
-            response.setStatus(HttpStatus.OK);
-            response.addHeaders("Content-Type", "text/html");
-            String htmlText = "<html><body><h1>Hello from my custom Java Web Server!</h1><p>Path requested: " + request.getPath() + "</p></body></html>";
-            response.setBody(htmlText);
+
+            HttpResponse response = router.route(request);
+
             response.send(outputStream);
         }
         catch (IOException e) {
