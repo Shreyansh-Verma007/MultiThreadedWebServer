@@ -1,4 +1,9 @@
 package com.Shreyansh.webserver.routing;
 
-public class RouteHandler {
+import com.Shreyansh.webserver.http.HttpRequest;
+import com.Shreyansh.webserver.http.HttpResponse;
+
+@FunctionalInterface
+public interface RouteHandler {
+    HttpResponse handle(HttpRequest request);
 }
