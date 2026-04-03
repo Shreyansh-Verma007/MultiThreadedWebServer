@@ -7,7 +7,7 @@ import java.util.Map;
 
 public class HttpResponse {
     private HttpStatus httpStatus;
-    private Map<String, String> headers;
+    private final Map<String, String> headers;
     private byte[] body;
 
     public HttpResponse() {

@@ -3,6 +3,7 @@ package com.Shreyansh.webserver.core;
 import com.Shreyansh.webserver.http.HttpParser;
 import com.Shreyansh.webserver.http.HttpRequest;
 import com.Shreyansh.webserver.http.HttpResponse;
+import com.Shreyansh.webserver.middleware.FilterChain;
 import com.Shreyansh.webserver.routing.Router;
 
 import java.io.*;
@@ -11,10 +12,12 @@ import java.net.Socket;
 public class RequestProcessor implements Runnable {
     private final Socket client;
     private final Router router;
+    private final FilterChain filterChain;
 
-    public RequestProcessor(Socket client, Router router) {
+    public RequestProcessor(Socket client, Router router, FilterChain filterChain) {
         this.client = client;
         this.router = router;
+        this.filterChain = filterChain;
     }
 
     @Override
@@ -23,7 +26,9 @@ public class RequestProcessor implements Runnable {
             InputStream inputStream = client.getInputStream();
             OutputStream outputStream = client.getOutputStream();
 
-            HttpRequest request = HttpParser.parseRequest(inputStream);
+            String clientIp = client.getInetAddress().getHostAddress();
+            if (clientIp == null) clientIp = "0.0.0.0";
+            HttpRequest request = HttpParser.parseRequest(inputStream, clientIp);
 
             if (request == null) {
                 return;
@@ -31,7 +36,10 @@ public class RequestProcessor implements Runnable {
 
             System.out.println("Received: " + request.getMethod() + " " + request.getPath());
 
-            HttpResponse response = router.route(request);
+            HttpResponse response = new HttpResponse();
+            if (filterChain.execute(request, response)) {
+                response = router.route(request);
+            }
 
             response.send(outputStream);
         }

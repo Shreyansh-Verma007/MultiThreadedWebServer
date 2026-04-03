@@ -9,7 +9,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 
 public class RouteScanner {
-    private Router router;
+    private final Router router;
 
     public RouteScanner(Router router) {
         this.router = router;
@@ -31,13 +31,13 @@ public class RouteScanner {
                 scanDirectory(directory, basePackage);
             }
         } catch (Exception e) {
-            System.err.println("Scan failed: " + e.getMessage());;
+            System.err.println("Scan failed: " + e.getMessage());
         }
     }
 
     private void scanDirectory(File directory, String basePackage) {
         File[] files = directory.listFiles();
-        if (files == null) { return; };
+        if (files == null) { return; }
         for (File file : files) {
             if (file.isDirectory()) {
                 scanDirectory(file, basePackage + "." + file.getName());

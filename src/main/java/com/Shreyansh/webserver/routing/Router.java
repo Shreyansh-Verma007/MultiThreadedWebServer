@@ -64,7 +64,7 @@ public class Router {
 
     public void registerController(Object controller) {
         Class<?> controllerClass = controller.getClass();
-        if (!controllerClass.isAnnotationPresent(RestController.class)) { return; };
+        if (!controllerClass.isAnnotationPresent(RestController.class)) { return; }
 
         for (Method method : controllerClass.getDeclaredMethods()) {
             if (method.isAnnotationPresent(GetMapping.class)) {

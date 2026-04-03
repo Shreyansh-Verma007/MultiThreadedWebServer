@@ -8,7 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class HttpParser {
-    public static HttpRequest parseRequest(InputStream inputStream) throws IOException {
+    public static HttpRequest parseRequest(InputStream inputStream, String clientIp) throws IOException {
         HttpMethod httpMethod;
         String path;
         String version;
@@ -27,7 +27,7 @@ public class HttpParser {
         path = line1[1];
         version = line1[2];
 
-        String line2 = "";
+        String line2;
         while ((line2 = br.readLine()) != null && !line2.isEmpty()) {
             String [] parts = line2.split(":", 2);
             headers.put(parts[0].trim(), parts[1].trim());
@@ -47,6 +47,6 @@ public class HttpParser {
             body = new String(buffer);
         }
 
-        return new HttpRequest(httpMethod, path, version, headers, body);
+        return new HttpRequest(httpMethod, path, version, headers, body, clientIp);
     }
 }
