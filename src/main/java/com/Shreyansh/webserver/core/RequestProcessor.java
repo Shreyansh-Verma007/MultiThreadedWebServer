@@ -25,6 +25,10 @@ public class RequestProcessor implements Runnable {
 
             HttpRequest request = HttpParser.parseRequest(inputStream);
 
+            if (request == null) {
+                return;
+            }
+
             System.out.println("Received: " + request.getMethod() + " " + request.getPath());
 
             HttpResponse response = router.route(request);

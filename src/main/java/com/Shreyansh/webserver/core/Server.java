@@ -29,7 +29,7 @@ public class Server {
     }
 
     public void start() {
-        try (ServerSocket serverSocket = new ServerSocket(this.port)) {
+        try (ServerSocket serverSocket = new ServerSocket(this.port, 10000)) {
             System.out.println("Server started on port " + this.port + "...... ");
 
             while (this.isRunning) {

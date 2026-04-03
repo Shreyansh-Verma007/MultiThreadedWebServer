@@ -17,7 +17,12 @@ public class HttpParser {
 
         BufferedReader br = new BufferedReader(new InputStreamReader(inputStream));
 
-        String[] line1 = br.readLine().split(" ");
+        String firstLine = br.readLine();
+
+        if (firstLine == null || firstLine.trim().isEmpty()) {
+            return null;
+        }
+        String[] line1 = firstLine.split(" ");
         httpMethod = HttpMethod.valueOf(line1[0]);
         path = line1[1];
         version = line1[2];
