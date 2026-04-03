@@ -3,7 +3,6 @@ package com.Shreyansh.webserver.core;
 import com.Shreyansh.webserver.http.HttpParser;
 import com.Shreyansh.webserver.http.HttpRequest;
 import com.Shreyansh.webserver.http.HttpResponse;
-import com.Shreyansh.webserver.http.HttpStatus;
 import com.Shreyansh.webserver.routing.Router;
 
 import java.io.*;
@@ -45,7 +44,5 @@ public class RequestProcessor implements Runnable {
                 System.err.println("Error closing client socket: " + e.getMessage());
             }
         }
-
-
     }
 }

@@ -21,6 +21,13 @@ public class Server {
         this.router = router;
     }
 
+    public void scanAndStart(String basePackage) {
+        System.out.println("Scanning " + basePackage + " for controllers...");
+        RouteScanner routeScanner = new RouteScanner(this.router);
+        routeScanner.scan(basePackage);
+        this.start();
+    }
+
     public void start() {
         try (ServerSocket serverSocket = new ServerSocket(this.port)) {
             System.out.println("Server started on port " + this.port + "...... ");

@@ -8,6 +8,6 @@ public class Main {
         Router router = new Router();
 
         Server server = new Server(8080, 100, router);
-        server.start();
+        server.scanAndStart("com.Shreyansh.webserver");
     }
 }
