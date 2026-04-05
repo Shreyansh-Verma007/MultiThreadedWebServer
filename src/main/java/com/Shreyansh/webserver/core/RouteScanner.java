@@ -7,6 +7,10 @@ import java.io.File;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.net.JarURLConnection;
+import java.util.Enumeration;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 public class RouteScanner {
     private final Router router;
@@ -24,11 +28,27 @@ public class RouteScanner {
                 System.out.println("Can't find resource " + path);
                 return;
             }
-            String directoryPath = URLDecoder.decode(url.getFile(), StandardCharsets.UTF_8);
-            File directory = new File(directoryPath);
+            
+            if ("jar".equals(url.getProtocol())) {
+                JarURLConnection connection = (JarURLConnection) url.openConnection();
+                try (JarFile jarFile = connection.getJarFile()) {
+                    Enumeration<JarEntry> entries = jarFile.entries();
+                    while (entries.hasMoreElements()) {
+                        JarEntry entry = entries.nextElement();
+                        String entryName = entry.getName();
+                        if (entryName.startsWith(path) && entryName.endsWith(".class")) {
+                            String className = entryName.substring(0, entryName.length() - 6).replace('/', '.');
+                            processClass(className);
+                        }
+                    }
+                }
+            } else {
+                String directoryPath = URLDecoder.decode(url.getFile(), StandardCharsets.UTF_8);
+                File directory = new File(directoryPath);
 
-            if (directory.exists()) {
-                scanDirectory(directory, basePackage);
+                if (directory.exists()) {
+                    scanDirectory(directory, basePackage);
+                }
             }
         } catch (Exception e) {
             System.err.println("Scan failed: " + e.getMessage());

@@ -1,9 +1,7 @@
 package com.Shreyansh.webserver.http;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,9 +13,7 @@ public class HttpParser {
         Map<String, String> headers = new HashMap<>();
         String body = "";
 
-        BufferedReader br = new BufferedReader(new InputStreamReader(inputStream));
-
-        String firstLine = br.readLine();
+        String firstLine = readLine(inputStream);
 
         if (firstLine == null || firstLine.trim().isEmpty()) {
             return null;
@@ -28,25 +24,40 @@ public class HttpParser {
         version = line1[2];
 
         String line2;
-        while ((line2 = br.readLine()) != null && !line2.isEmpty()) {
+        while ((line2 = readLine(inputStream)) != null && !line2.isEmpty()) {
             String [] parts = line2.split(":", 2);
             headers.put(parts[0].trim(), parts[1].trim());
         }
 
         if (headers.containsKey("Content-Length")) {
-            int length = Integer.parseInt(headers.get("Content-Length"));
-            char[] buffer = new char[length];
-            int charsRead = 0;
-            while (charsRead < length) {
-                int read = br.read(buffer, charsRead, length - charsRead);
-                if (read == -1) {
-                    break;
-                }
-                charsRead += read;
+            int length = Integer.parseInt(headers.get("Content-Length").trim());
+            byte[] bodyBytes = new byte[length];
+            int bytesRead = 0;
+            while (bytesRead < length) {
+                int read = inputStream.read(bodyBytes, bytesRead, length - bytesRead);
+                if (read == -1) break;
+                bytesRead += read;
             }
-            body = new String(buffer);
+            body = new String(bodyBytes, java.nio.charset.StandardCharsets.ISO_8859_1);
         }
 
         return new HttpRequest(httpMethod, path, version, headers, body, clientIp);
+    }
+
+    private static String readLine(InputStream in) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        int c;
+        while ((c = in.read()) != -1) {
+            if (c == '\r') {
+                int next = in.read();
+                if (next == '\n') break;
+            } else if (c == '\n') {
+                break;
+            } else {
+                sb.append((char) c);
+            }
+        }
+        if (sb.length() == 0 && c == -1) return null;
+        return sb.toString();
     }
 }

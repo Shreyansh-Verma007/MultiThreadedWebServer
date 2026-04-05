@@ -17,6 +17,11 @@ public class RateLimiter implements Filter {
 
     @Override
     public boolean filter(HttpRequest request, HttpResponse response) {
+        if (ipBuckets.size() > 10000) {
+            long now = System.currentTimeMillis();
+            ipBuckets.entrySet().removeIf(e -> now - e.getValue().lastReset > 60000);
+        }
+
         String ip = request.getRemoteAddr();
         Bucket bucket = ipBuckets.computeIfAbsent(ip, k -> new Bucket());
 

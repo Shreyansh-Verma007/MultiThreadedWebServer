@@ -76,7 +76,7 @@ public class LRUCache {
         insertToFront(node);
     }
 
-    public void remove(String key) {
+    public synchronized void remove(String key) {
         if (map.containsKey(key)) {
             remove(map.get(key));
         }

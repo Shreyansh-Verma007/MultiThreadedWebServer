@@ -41,6 +41,7 @@ public class Server {
 
             while (this.isRunning) {
                 Socket client = serverSocket.accept();
+                client.setSoTimeout(5000);
                 RequestProcessor processor = new RequestProcessor(client, this.router, this.filterChain, this.fileHandler);
                 executor.execute(processor);
             }
