@@ -63,20 +63,17 @@ This custom web server framework addresses these critical gaps through:
 - Gradle (check with `gradle -v`)
 
 ### Option 1: Run the Pre-built JAR (Quickest)
-1. Download the latest `server-jar` artifact from the **GitHub Actions** tab.
+1. Download the latest `server-jar` artifact from the [GitHub Actions](#) tab.
 2. Unzip the artifact and open your terminal in that directory.
 3. Boot the server using:
    ```bash
    java -jar MultithreadedWebServer-1.0-SNAPSHOT.jar 
    ```
 
-The server comes preloaded with static files to demonstrate the LRU Cache and Dual-Mode JAR Loader. Open your browser and test these endpoints:
+**Test the Framework**: The server is pre-configured with both Static File handling and Dynamic Annotation-based Routing. Open your browser to test:
 
-- 🌐 **Homepage:** [http://localhost:8080/index.html](http://localhost:8080/index.html)
-- 💻 **Tech Image:** [http://localhost:8080/tech.jpg](http://localhost:8080/tech.jpg)
-- 🖥️ **PC Image:** [http://localhost:8080/pc.jpg](http://localhost:8080/pc.jpg)
-
-*(Refresh the page to see the server instantly serve these from the RAM cache!)*
+- ⚙️ **Dynamic API (@GetMapping):** [http://localhost:8080/api/status](http://localhost:8080/api/status) (Returns dynamically generated JSON via Reflection)
+- 💻 **Static LRU Cache:** [http://localhost:8080/tech.jpg](http://localhost:8080/tech.jpg) (Served instantly from memory)
 
 ### Option 2: Build from Source
 1. **Clone the repository**
