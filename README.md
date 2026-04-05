@@ -35,6 +35,7 @@ This custom web server framework addresses these critical gaps through:
 ### 🎯 Core Engine
 - 🧵 **Multithreaded Request Processing:** Concurrent handling of client TCP sockets via Java's `ExecutorService`.
 - 🧩 **Object-Oriented HTTP Model:** Transforms raw byte streams into clean, fully-typed `HttpRequest` and `HttpResponse` structured models.
+- 📍 **Auto-Discovery & File Serving:** Automatically scans `controllers` packages to map methods annotated with `@GetMapping` and `@PostMapping` into API endpoints, while concurrently serving static files from the `resources` directory.
 - 🚦 **Per-IP Rate Limiting:** Custom Fixed-Window algorithm to throttle excessive traffic per client IP without bottlenecking the main thread.
 - 🛡️ **Middleware Pipeline:** Intercepts requests using the Filter Chain pattern for security checks.
 - 💾 **In-Memory LRU Cache & Static Loader:** Thread-safe, synchronized Least Recently Used cache mapped to a custom Dual-Mode file loader. Serves pre-packaged resources directly from the JAR classpath in O(1) time without disk-IO bottlenecks.
@@ -97,19 +98,21 @@ This custom web server framework addresses these critical gaps through:
 
 ```plaintext
 MultithreadedWebServer/
-├── src/main/java/com/shreyansh/webserver/
+├── src/main/java/com/Shreyansh/webserver/
 │   ├── Main.java                        # Server entry point & listener
 │   ├── annotations/                     # Metaprogramming framework
 │   │   ├── GetMapping.java              
 │   │   ├── PostMapping.java             
-│   │   ├── RestController.java          
-│   │   └── RouteScanner.java            # Reflection auto-registration
+│   │   └── RestController.java          
 │   ├── cache/                           # Memory & File Management
 │   │   ├── LRUCache.java                # Thread-safe node pointers
 │   │   └── StaticFileHandler.java       # Dual-Mode JAR/Disk file loader
+│   ├── controllers/                     # Application Endpoints
+│   │   └── DemoController.java          # Sample API & Views
 │   ├── core/                            # Concurrency Engine
-│   │   ├── Server.java                  # Thread Pool setup
-│   │   └── RequestProcessor.java        # Runnable client task
+│   │   ├── RequestProcessor.java        # Runnable client task
+│   │   ├── RouteScanner.java            # Reflection auto-registration
+│   │   └── Server.java                  # Thread Pool setup
 │   ├── http/                            # Protocol Data Models
 │   │   ├── HttpMethod.java              
 │   │   ├── HttpParser.java              # Raw bytes & Headers -> HttpRequest
