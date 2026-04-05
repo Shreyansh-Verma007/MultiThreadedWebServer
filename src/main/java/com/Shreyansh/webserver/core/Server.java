@@ -1,5 +1,6 @@
 package com.Shreyansh.webserver.core;
 
+import com.Shreyansh.webserver.cache.StaticFileHandler;
 import com.Shreyansh.webserver.middleware.FilterChain;
 import com.Shreyansh.webserver.routing.Router;
 
@@ -16,9 +17,11 @@ public class Server {
     private final boolean isRunning;
     private final Router router;
     private final FilterChain filterChain;
+    private final StaticFileHandler fileHandler;
 
-    public Server(int port, int poolSize, Router router, FilterChain filterChain) {
+    public Server(int port, int poolSize, Router router, FilterChain filterChain, StaticFileHandler fileHandler) {
         this.port = port;
+        this.fileHandler = fileHandler;
         this.isRunning = true;
         this.executor = Executors.newFixedThreadPool(poolSize);
         this.router = router;
@@ -38,7 +41,7 @@ public class Server {
 
             while (this.isRunning) {
                 Socket client = serverSocket.accept();
-                RequestProcessor processor = new RequestProcessor(client, this.router, this.filterChain);
+                RequestProcessor processor = new RequestProcessor(client, this.router, this.filterChain, this.fileHandler);
                 executor.execute(processor);
             }
         }

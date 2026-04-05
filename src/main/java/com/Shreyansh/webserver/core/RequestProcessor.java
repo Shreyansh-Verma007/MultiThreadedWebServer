@@ -1,8 +1,8 @@
 package com.Shreyansh.webserver.core;
 
-import com.Shreyansh.webserver.http.HttpParser;
-import com.Shreyansh.webserver.http.HttpRequest;
-import com.Shreyansh.webserver.http.HttpResponse;
+import com.Shreyansh.webserver.cache.LRUCache;
+import com.Shreyansh.webserver.cache.StaticFileHandler;
+import com.Shreyansh.webserver.http.*;
 import com.Shreyansh.webserver.middleware.FilterChain;
 import com.Shreyansh.webserver.routing.Router;
 
@@ -13,11 +13,13 @@ public class RequestProcessor implements Runnable {
     private final Socket client;
     private final Router router;
     private final FilterChain filterChain;
+    private final StaticFileHandler fileHandler;
 
-    public RequestProcessor(Socket client, Router router, FilterChain filterChain) {
+    public RequestProcessor(Socket client, Router router, FilterChain filterChain, StaticFileHandler fileHandler) {
         this.client = client;
         this.router = router;
         this.filterChain = filterChain;
+        this.fileHandler = fileHandler;
     }
 
     @Override
@@ -39,6 +41,23 @@ public class RequestProcessor implements Runnable {
             HttpResponse response = new HttpResponse();
             if (filterChain.execute(request, response)) {
                 response = router.route(request);
+                if (response.getStatus() == HttpStatus.NOT_FOUND &&
+                        request.getMethod() == HttpMethod.GET) {
+
+                    String path = request.getPath().equals("/") ? "/index.html" : request.getPath();
+
+                    try {
+                        LRUCache.cachedFile file = fileHandler.get(path);
+
+                        if (file != null) {
+                            response.setStatus(HttpStatus.OK);
+                            response.setBody(file.data, file.contentType);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("File read error: " + e.getMessage());
+                        response.setStatus(HttpStatus.INTERNAL_ERROR);
+                    }
+                }
             }
 
             response.send(outputStream);

@@ -15,6 +15,7 @@ public class HttpResponse {
         this.headers = new HashMap<>();
         this.body = new byte[0];
     }
+    public HttpStatus getStatus() { return this.httpStatus; }
     public void setStatus(HttpStatus httpStatus) {
         this.httpStatus = httpStatus;
     }
@@ -24,6 +25,12 @@ public class HttpResponse {
 
     public void setBody(String body) {
         this.body = body.getBytes();
+        this.headers.put("Content-Length", String.valueOf(this.body.length));
+    }
+
+    public void setBody(byte[] body, String contentType) {
+        this.body = body;
+        this.headers.put("Content-Type", contentType);
         this.headers.put("Content-Length", String.valueOf(this.body.length));
     }
 
