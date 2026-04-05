@@ -8,11 +8,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class RateLimiter implements Filter {
-    private final int MAX_PER_SECOND = 100;
     private final ConcurrentHashMap<String, Bucket> ipBuckets = new ConcurrentHashMap<>();
 
     private static class Bucket {
-        AtomicInteger count = new AtomicInteger(0);
+        final AtomicInteger count = new AtomicInteger(0);
         Long lastReset = System.currentTimeMillis();
     }
 
@@ -27,6 +26,7 @@ public class RateLimiter implements Filter {
                 bucket.lastReset = System.currentTimeMillis();
             }
         }
+        int MAX_PER_SECOND = 100;
         if (bucket.count.incrementAndGet() > MAX_PER_SECOND) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS);
             response.setBody("{\"error\": \"IP Rate Limit Exceeded\"}");

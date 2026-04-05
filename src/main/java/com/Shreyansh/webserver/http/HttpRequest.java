@@ -25,14 +25,10 @@ public class HttpRequest {
     public String getPath() {
         return path;
     }
-    public Map<String, String> getHeaders() {
-        return headers;
-    }
+
     public String getBody() {
         return body;
     }
-    public String getVersion() {
-        return version;
-    }
+
     public String getRemoteAddr() { return remoteAddr; }
 }

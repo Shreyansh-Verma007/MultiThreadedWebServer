@@ -21,10 +21,7 @@ public class HttpResponse {
     public void addHeaders(String key, String value) {
         headers.put(key, value);
     }
-    public void setBody(byte[] body) {
-        this.body = body;
-        this.headers.put("Content-Length", String.valueOf(this.body.length));
-    }
+
     public void setBody(String body) {
         this.body = body.getBytes();
         this.headers.put("Content-Length", String.valueOf(this.body.length));
