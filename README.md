@@ -2,6 +2,9 @@
 <p align="center">
   <em>First Release - v1.0.0</em>
 </p>
+<p align="center">
+  <img src="https://github.com/Shreyansh-Verma007/MultithreadedWebServer/actions/workflows/build.yml/badge.svg" alt="Java CI with Gradle" />
+</p>
 
 A high-performance, multithreaded web server built entirely from scratch in pure Java. Designed to peel back the abstraction layers of enterprise tools like Spring Boot, this project implements bare-metal networking, advanced algorithmic routing, and robust concurrency control.
 
@@ -32,8 +35,9 @@ This custom web server framework addresses these critical gaps through:
 ### 🎯 Core Engine
 - 🧵 **Multithreaded Request Processing:** Concurrent handling of client TCP sockets via Java's `ExecutorService`.
 - 🧩 **Object-Oriented HTTP Model:** Transforms raw byte streams into clean, fully-typed `HttpRequest` and `HttpResponse` structured models.
-- 🚦 **Per-IP Rate Limiting:** Custom Fixed-Window algorithm utilizing `ConcurrentHashMap` and `AtomicInteger` to throttle excessive traffic per client IP without bottlenecking the main server thread.
-- 🛡️ **Middleware Pipeline:** Intercepts requests using the Filter Chain pattern for security checks, ensuring blocked requests bypass the router entirely to save CPU cycles.
+- 🚦 **Per-IP Rate Limiting:** Custom Fixed-Window algorithm to throttle excessive traffic per client IP without bottlenecking the main thread.
+- 🛡️ **Middleware Pipeline:** Intercepts requests using the Filter Chain pattern for security checks.
+- 💾 **In-Memory LRU Cache:** Thread-safe, synchronized Least Recently Used cache mapped directly to static files for O(1) reads without disk-IO bottlenecks.
 
 ### 📊 Stress Test Performance
 - **The 50k Chaos Test:** Successfully handled a simulated load of 50,000 concurrent GET and POST requests across 100 threads.
@@ -62,7 +66,7 @@ This custom web server framework addresses these critical gaps through:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/Shreyansh-iittirupati/MultithreadedWebServer.git
+   git clone https://github.com/Shreyansh-Verma007/MultithreadedWebServer.git
    cd MultithreadedWebServer
    ```
 
@@ -73,9 +77,9 @@ This custom web server framework addresses these critical gaps through:
 
 3. **Start the Development Server**
    ```bash
-   gradlew run
+   java -jar build/libs/MultithreadedWebServer-1.0-SNAPSHOT.jar 
    ```
-   *Open [http://localhost:8080](http://localhost:8080) 🎉*
+   *Open [http://localhost:8089](http://localhost:8089) 🎉*
 
 ## 📂 Project Structure
 
@@ -110,7 +114,6 @@ MultithreadedWebServer/
 ```
 
 ## 🚧 Roadmap & Upcoming Features
-- 💾 **In-Memory LRU Cache:** Custom Least Recently Used cache (Doubly Linked List + HashMap) for O(1) constant-time reads & writes of static files.
 - 🤖 **NIO Upgrades:** Migrating blocking Sockets to asynchronous `SocketChannel` and `Selector`.
 - 📊 **HTTP/2 Support:** Extending the parsing engine for modern frame-based HTTP traffic protocols.
 
