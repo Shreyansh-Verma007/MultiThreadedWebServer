@@ -37,7 +37,7 @@ This custom web server framework addresses these critical gaps through:
 - 🧩 **Object-Oriented HTTP Model:** Transforms raw byte streams into clean, fully-typed `HttpRequest` and `HttpResponse` structured models.
 - 🚦 **Per-IP Rate Limiting:** Custom Fixed-Window algorithm to throttle excessive traffic per client IP without bottlenecking the main thread.
 - 🛡️ **Middleware Pipeline:** Intercepts requests using the Filter Chain pattern for security checks.
-- 💾 **In-Memory LRU Cache:** Thread-safe, synchronized Least Recently Used cache mapped directly to static files for O(1) reads without disk-IO bottlenecks.
+- 💾 **In-Memory LRU Cache & Static Loader:** Thread-safe, synchronized Least Recently Used cache mapped to a custom Dual-Mode file loader. Serves pre-packaged resources directly from the JAR classpath in O(1) time without disk-IO bottlenecks.
 
 ### 📊 Stress Test Performance
 - **The 50k Chaos Test:** Successfully handled a simulated load of 50,000 concurrent GET and POST requests across 100 threads.
@@ -48,22 +48,37 @@ This custom web server framework addresses these critical gaps through:
 ## 🧱 Tech Stack
 
 ### Language & Core APIs
-- ☕ **Java 17+** - Pure Core Java implementation with strictly no external dependencies.
+- ☕ **Java 21+** - Pure Core Java implementation with strictly no external dependencies.
 - 📘 **Java Socket I/O** - Under-the-hood raw TCP network streams and Buffer handling.
 - 🧬 **Java Reflection API** - Runtime class inspection and annotation scanning.
 - 🚦 **Java Concurrency Utilities** - `java.util.concurrent` package (Executors, HashMaps, Locks).
 
 ### Build & Tooling
-- 🐘 **Gradle** - Automation and dependency management.
+- 🐘 **Gradle** - Automation, dependency management, and JAR packaging.
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Java JDK 17 or higher (check with `java -version`)
+- Java JDK 21 or higher (check with `java -version`)
 - Gradle (check with `gradle -v`)
 
-### Quick Setup
+### Option 1: Run the Pre-built JAR (Quickest)
+1. Download the latest `server-jar` artifact from the **GitHub Actions** tab.
+2. Unzip the artifact and open your terminal in that directory.
+3. Boot the server using:
+   ```bash
+   java -jar MultithreadedWebServer-1.0-SNAPSHOT.jar 
+   ```
 
+The server comes preloaded with static files to demonstrate the LRU Cache and Dual-Mode JAR Loader. Open your browser and test these endpoints:
+
+- 🌐 **Homepage:** [http://localhost:8080/index.html](http://localhost:8080/index.html)
+- 💻 **Tech Image:** [http://localhost:8080/tech.jpg](http://localhost:8080/tech.jpg)
+- 🖥️ **PC Image:** [http://localhost:8080/pc.jpg](http://localhost:8080/pc.jpg)
+
+*(Refresh the page to see the server instantly serve these from the RAM cache!)*
+
+### Option 2: Build from Source
 1. **Clone the repository**
    ```bash
    git clone https://github.com/Shreyansh-Verma007/MultithreadedWebServer.git
@@ -72,14 +87,14 @@ This custom web server framework addresses these critical gaps through:
 
 2. **Build the framework**
    ```bash
-   gradlew build
+   ./gradlew build
    ```
 
 3. **Start the Development Server**
    ```bash
    java -jar build/libs/MultithreadedWebServer-1.0-SNAPSHOT.jar 
    ```
-   *Open [http://localhost:8089](http://localhost:8089) 🎉*
+   *Open [http://localhost:8080](http://localhost:8080) 🎉*
 
 ## 📂 Project Structure
 
@@ -92,6 +107,9 @@ MultithreadedWebServer/
 │   │   ├── PostMapping.java             
 │   │   ├── RestController.java          
 │   │   └── RouteScanner.java            # Reflection auto-registration
+│   ├── cache/                           # Memory & File Management
+│   │   ├── LRUCache.java                # Thread-safe node pointers
+│   │   └── StaticFileHandler.java       # Dual-Mode JAR/Disk file loader
 │   ├── core/                            # Concurrency Engine
 │   │   ├── Server.java                  # Thread Pool setup
 │   │   └── RequestProcessor.java        # Runnable client task
@@ -109,6 +127,7 @@ MultithreadedWebServer/
 │       ├── RouteHandler.java            
 │       ├── Router.java                  
 │       └── TrieNode.java                # O(K) path resolution tree
+├── src/main/resources/                  # Static Files (index.html, images)
 ├── build.gradle                         # Build configuration
 └── .gitignore                           # Ignored framework elements
 ```
