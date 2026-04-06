@@ -90,7 +90,7 @@ This custom web server framework addresses these critical gaps through:
 
 3. **Start the Development Server**
    ```bash
-   java -jar build/libs/MultithreadedWebServer-1.0-SNAPSHOT.jar 
+   java -jar build/libs/MultithreadedWebServer-1.0.0.jar 
    ```
    *Open [http://localhost:8080](http://localhost:8080) 🎉*
 
