@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'com.Shreyansh'
-version = '1.0-SNAPSHOT'
+version = '1.0.0'
 
 repositories {
     // Standard repository for downloading JUnit and other libraries

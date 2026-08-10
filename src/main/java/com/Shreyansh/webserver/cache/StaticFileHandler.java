@@ -22,14 +22,13 @@ public class StaticFileHandler {
 
         String relativePath = requestPath.startsWith("/") ? requestPath.substring(1) : requestPath;
 
-        // 1. Directory Traversal Security Guard
         if (relativePath.contains("..")) {
             throw new SecurityException("Unauthorized access attempt: " + requestPath);
         }
 
         byte[] fileBytes = null;
 
-        // 2. Try Local Filesystem execution (For VSCode/IntelliJ environments)
+ 
         Path root = Paths.get(staticDirectory);
         Path resolvedPath = root.resolve(relativePath).normalize();
         
@@ -37,8 +36,7 @@ public class StaticFileHandler {
             System.out.println("cache miss - Served the file from hard disk: " + requestPath);
             fileBytes = Files.readAllBytes(resolvedPath);
         } else {
-            // 3. Try Native Classpath execution (For zipped .JAR execution or CI/CD pipelines)
-            // Anything inside src/main/resources gets bundled at the root of the classpath
+          
             try (java.io.InputStream is = getClass().getClassLoader().getResourceAsStream(relativePath)) {
                 if (is != null) {
                     System.out.println("cache miss - Served the file from JAR classpath: " + requestPath);
