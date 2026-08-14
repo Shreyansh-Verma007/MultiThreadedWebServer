@@ -1,40 +1,42 @@
 package com.Shreyansh.webserver.cache;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.HashMap;
+import java.util.Map;
 
 public class LRUCache {
-    private int capacity;
-    private Node head;
-    private Node tail;
-    private ConcurrentHashMap<String, Node> map;
+    private final int capacity;
+    private final Node head;
+    private final Node tail;
+    private final Map<String, Node> map;
 
     public LRUCache(int capacity) {
         this.capacity = capacity;
-        this.map = new ConcurrentHashMap<String, Node>(capacity);
+        this.map = new HashMap<>(capacity);
         head = new Node("", null, "");
         tail = new Node("", null, "");
         head.next = tail;
         tail.prev = head;
     }
-    private static class Node {
-        public String key;
-        public byte[] value;
-        public String contentType;
-        public Node prev;
-        public Node next;
 
-        public Node(String key, byte[] value, String contentType) {
+    private static class Node {
+        String key;
+        byte[] value;
+        String contentType;
+        Node prev;
+        Node next;
+
+        Node(String key, byte[] value, String contentType) {
             this.key = key;
             this.value = value;
             this.contentType = contentType;
         }
     }
 
-    public static class cachedFile {
-        public byte[] data;
-        public String contentType;
+    public static class CachedFile {
+        public final byte[] data;
+        public final String contentType;
 
-        public cachedFile(byte[] data, String contentType) {
+        public CachedFile(byte[] data, String contentType) {
             this.data = data;
             this.contentType = contentType;
         }
@@ -49,18 +51,18 @@ public class LRUCache {
     }
 
     private void remove(Node node) {
-        Node temp = map.remove(node.key);
-        temp.prev.next = temp.next;
-        temp.next.prev = temp.prev;
+        map.remove(node.key);
+        node.prev.next = node.next;
+        node.next.prev = node.prev;
     }
 
-    public synchronized cachedFile get(String key) {
+    public synchronized CachedFile get(String key) {
         if (map.containsKey(key)) {
             Node node = map.get(key);
-            cachedFile cachedFile = new cachedFile(node.value, node.contentType);
+            CachedFile result = new CachedFile(node.value, node.contentType);
             remove(node);
             insertToFront(node);
-            return cachedFile;
+            return result;
         }
         return null;
     }

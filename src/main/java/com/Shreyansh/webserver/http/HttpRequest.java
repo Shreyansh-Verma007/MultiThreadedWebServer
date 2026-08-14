@@ -1,5 +1,6 @@
 package com.Shreyansh.webserver.http;
 
+import java.util.Collections;
 import java.util.Map;
 
 public class HttpRequest {
@@ -14,7 +15,7 @@ public class HttpRequest {
         this.httpMethod = httpMethod;
         this.path = path;
         this.version = version;
-        this.headers = headers;
+        this.headers = Collections.unmodifiableMap(headers);
         this.body = body;
         this.remoteAddr = remoteAddr;
     }
@@ -22,12 +23,21 @@ public class HttpRequest {
     public HttpMethod getMethod() {
         return httpMethod;
     }
+
     public String getPath() {
         return path;
     }
 
     public String getBody() {
         return body;
+    }
+
+    public Map<String, String> getHeaders() {
+        return headers;
+    }
+
+    public String getVersion() {
+        return version;
     }
 
     public String getRemoteAddr() { return remoteAddr; }

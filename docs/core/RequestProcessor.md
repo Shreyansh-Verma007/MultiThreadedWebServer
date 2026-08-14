@@ -1,182 +1,179 @@
-# 📄 `RequestProcessor.java` — HTTP Request Handler (Per-Connection)
+# 📄 `RequestProcessor.java` — Request Lifecycle Manager
 
 **Package:** `com.Shreyansh.webserver.core`  
 **Path:** `src/main/java/com/Shreyansh/webserver/core/RequestProcessor.java`  
-**Role:** Handles a single HTTP request — parses it, runs middleware filters, routes it, falls back to static file serving, and sends the response.
+**Role:** Implements `Runnable` — the complete lifecycle of a single HTTP request/response cycle on a thread pool worker.
 
 ---
 
 ## File Overview
 
-`RequestProcessor` implements `Runnable` and is the unit of work submitted to the thread pool for each incoming TCP connection. Each instance handles exactly **one HTTP request** on **one socket**. It orchestrates the entire request lifecycle:
+`RequestProcessor` is the **execution unit** for each incoming connection. It implements `Runnable` so it can be submitted to the `ExecutorService` thread pool. Each instance handles exactly one HTTP request from one TCP connection:
 
 ```
-Raw TCP bytes → Parse HTTP → Run Filters → Route to Handler → (Fallback to Static File) → Send Response
+Socket accepted → RequestProcessor created → submitted to pool → run() called → socket closed
+```
+
+This class is the **orchestrator** — it ties together every subsystem in the correct order: parsing, filtering, routing, static file fallback, and response serialization.
+
+---
+
+## The Request Lifecycle (5 Phases)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Phase 1: PARSE                                          │
+│    HttpParser.parseRequest(inputStream, clientIp)         │
+│    Raw bytes → structured HttpRequest                    │
+│    null? → skip to cleanup (no response sent)            │
+│                                                          │
+│  Phase 2: FILTER + ROUTE (conditional)                   │
+│    if filterChain.execute(request, response):            │
+│      router.route(request) → controller or 404/405       │
+│    else: response already has 429 from RateLimiter       │
+│                                                          │
+│  Phase 3: STATIC FILE FALLBACK                           │
+│    Only if: filters passed AND status == 404 AND GET     │
+│    "/" → "/index.html" rewrite                           │
+│    StaticFileHandler.get(path) → LRU cache or disk       │
+│    SecurityException / IO error → 500                    │
+│                                                          │
+│  Phase 4: RESPOND                                        │
+│    response.send(outputStream) → raw bytes on wire       │
+│    (runs for both allowed and rate-limited requests)     │
+│                                                          │
+│  Phase 5: CLEANUP                                        │
+│    finally { socket.close() }                            │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Line-by-Line Explanation
 
-### Fields (Lines 13–16)
+### Fields and Constructor (Lines 12–23)
 
 ```java
-private final Socket client;                                   // Line 13: The TCP connection to the client
-private final Router router;                                   // Line 14: The trie-based URL router
-private final FilterChain filterChain;                         // Line 15: The middleware pipeline
-private final StaticFileHandler fileHandler;                   // Line 16: The static file handler with LRU cache
+public class RequestProcessor implements Runnable {
+    private final Socket client;                               // Unique per connection
+    private final Router router;                               // Shared across all processors
+    private final FilterChain filterChain;                     // Shared across all processors
+    private final StaticFileHandler fileHandler;               // Shared across all processors
+
+    public RequestProcessor(Socket client, Router router, FilterChain filterChain, StaticFileHandler fileHandler) {
+        this.client = client;
+        this.router = router;
+        this.filterChain = filterChain;
+        this.fileHandler = fileHandler;
+    }
 ```
 
-All fields are `final` — set once in the constructor.
+**Thread safety implication:** Shared objects must be either thread-safe (Router: read-only after startup; FilterChain: read-only after startup; RateLimiter: `ConcurrentHashMap` + per-bucket locking; StaticFileHandler: synchronized LRU cache) or stateless (HttpParser: static method).
 
-### Constructor (Lines 18–23)
+### `run()` — The Core Lifecycle Method (Lines 25–78)
+
+#### Setup and Parse (Lines 27–37)
 
 ```java
-public RequestProcessor(Socket client, Router router, FilterChain filterChain, StaticFileHandler fileHandler) {  // Line 18
-    this.client = client;                                      // Line 19
-    this.router = router;                                      // Line 20
-    this.filterChain = filterChain;                            // Line 21
-    this.fileHandler = fileHandler;                            // Line 22
-}
+    public void run() {
+        try {
+            InputStream inputStream = client.getInputStream();
+            OutputStream outputStream = client.getOutputStream();
+
+            String clientIp = client.getInetAddress().getHostAddress();
+            if (clientIp == null) clientIp = "0.0.0.0";        // Line 32: Fallback for unresolved addresses
+            HttpRequest request = HttpParser.parseRequest(inputStream, clientIp);
+
+            if (request == null) {
+                return;                                        // Invalid/empty request → close silently
+            }
 ```
 
-### `run()` — The Request Lifecycle (Lines 25–78)
+**Line 32:** Null IP fallback ensures rate limiting always has a bucket key, even for edge-case socket states.
 
-This is called by the thread pool when a thread picks up this task.
+**Null request:** Malformed parsing, unsupported methods, invalid `Content-Length`, or empty connections all return `null`. No HTTP response is sent — the `finally` block closes the socket.
 
-#### Step 1: Get I/O Streams and Parse HTTP (Lines 27–37)
-
-```java
-@Override
-public void run() {                                            // Line 26
-    try {
-        InputStream inputStream = client.getInputStream();     // Line 28: Raw bytes from the client
-        OutputStream outputStream = client.getOutputStream();  // Line 29: Raw bytes to the client
-
-        String clientIp = client.getInetAddress().getHostAddress();  // Line 31: Get client's IP address
-        if (clientIp == null) clientIp = "0.0.0.0";           // Line 32: Fallback if IP is null
-        HttpRequest request = HttpParser.parseRequest(inputStream, clientIp);  // Line 33: Parse raw bytes → HttpRequest
-
-        if (request == null) {                                 // Line 35: Null means empty/invalid request
-            return;                                            // Line 36: Silently close connection
-        }
-```
-
-**Line 33**: `HttpParser.parseRequest()` reads the raw HTTP request from the input stream and constructs an `HttpRequest` object with method, path, headers, and body. Returns `null` for empty or malformed requests.
-
-#### Step 2: Log the Request (Line 39)
+#### Filter, Route, and Static Fallback (Lines 41–61)
 
 ```java
-        System.out.println("Received: " + request.getMethod() + " " + request.getPath());  // Line 39
-```
+            HttpResponse response = new HttpResponse();
+            if (filterChain.execute(request, response)) {
+                response = router.route(request);
+                if (response.getStatus() == HttpStatus.NOT_FOUND &&
+                        request.getMethod() == HttpMethod.GET) {
 
-Prints the HTTP method and path to stdout (e.g., `Received: GET /api/status`).
+                    String path = request.getPath().equals("/") ? "/index.html" : request.getPath();
 
-#### Step 3: Run Middleware Filters (Lines 41–42)
+                    try {
+                        LRUCache.CachedFile file = fileHandler.get(path);
 
-```java
-        HttpResponse response = new HttpResponse();            // Line 41: Create a default response (200 OK)
-        if (filterChain.execute(request, response)) {          // Line 42: Run all filters
-```
-
-**`filterChain.execute()`** runs each filter (currently just `RateLimiter`) in order. Each filter can:
-- Return `true` → continue to the next filter / routing.
-- Return `false` → short-circuit. The filter sets the response (e.g., 429 Too Many Requests) and the response is sent immediately without routing.
-
-#### Step 4: Route the Request (Lines 43–60)
-
-```java
-            response = router.route(request);                  // Line 43: Look up and execute the route handler
-            if (response.getStatus() == HttpStatus.NOT_FOUND &&  // Line 44: No route matched?
-                    request.getMethod() == HttpMethod.GET) {   // Line 45: And it's a GET request?
-```
-
-If the router returns a 404 (no matching route) and the request is a GET, the processor falls back to serving a static file:
-
-```java
-                String path = request.getPath().equals("/") ? "/index.html" : request.getPath();  // Line 47
-
-                try {
-                    LRUCache.cachedFile file = fileHandler.get(path);  // Line 50: Try to find the static file
-
-                    if (file != null) {                        // Line 52: File found!
-                        response.setStatus(HttpStatus.OK);     // Line 53: Change status from 404 → 200
-                        response.setBody(file.data, file.contentType);  // Line 54: Set file bytes as body
+                        if (file != null) {
+                            response.setStatus(HttpStatus.OK);
+                            response.setBody(file.data, file.contentType);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("File read error: " + e.getMessage());
+                        response.setStatus(HttpStatus.INTERNAL_ERROR);  // Path traversal → 500
                     }
-                } catch (Exception e) {                        // Line 56
-                    System.err.println("File read error: " + e.getMessage());  // Line 57
-                    response.setStatus(HttpStatus.INTERNAL_ERROR);  // Line 58: 500 on file read failure
-                }
-```
-
-**Line 47**: Special case — if the path is `/` (root), rewrite it to `/index.html`. This is the standard behavior for serving a default landing page.
-
-**Line 50**: `fileHandler.get(path)` checks the LRU cache first, then disk, then JAR classpath.
-
-#### Step 5: Send the Response (Line 63)
-
-```java
-            response.send(outputStream);                       // Line 63: Write HTTP response bytes to the socket
-```
-
-#### Step 6: Error Handling and Cleanup (Lines 64–77)
-
-```java
-        }
-        catch (IOException e) {                               // Line 65
-            System.err.println("Error processing client: " + e.getMessage());  // Line 66
-        }
-        finally {                                             // Line 68
-            try {
-                if (client != null && !client.isClosed()) {   // Line 70
-                    client.close();                            // Line 71: Always close the socket
                 }
             }
-            catch (IOException e) {                           // Line 73
-                System.err.println("Error closing client socket: " + e.getMessage());  // Line 75
+
+            response.send(outputStream);
+```
+
+**Filter short-circuit:** When `filterChain.execute()` returns `false` (rate limited), routing is skipped. The `RateLimiter` has already set status 429 and an error body on the shared `response` object. `response.send()` still runs at the end — one send path for all outcomes.
+
+**405 vs 404:** If the router returns 405 (method not allowed), the static file fallback does **not** run — only `NOT_FOUND` triggers fallback.
+
+**Static file errors:** `SecurityException` from path traversal (`..` in path) is caught by the broad `catch (Exception e)` and converted to HTTP 500.
+
+#### Cleanup (Lines 65–77)
+
+```java
+        } catch (IOException e) {
+            System.err.println("Error processing client: " + e.getMessage());
+        } finally {
+            try {
+                if (client != null && !client.isClosed()) {
+                    client.close();
+                }
+            } catch (IOException e) {
+                System.err.println("Error closing client socket: " + e.getMessage());
             }
         }
     }
 ```
 
-The `finally` block ensures the client socket is **always closed**, even if an exception occurs. This prevents resource leaks (file descriptor exhaustion).
+**`finally` guarantees cleanup:** SocketTimeoutException (Slowloris), client disconnect, or write errors all lead to socket closure. Prevents file descriptor leaks.
 
 ---
 
-## Request Processing Flowchart
+## Memory Footprint Per Connection
 
 ```
-run()
-  │
-  ├── Parse HTTP request (HttpParser)
-  │     └── null? → return (close connection silently)
-  │
-  ├── Log: "Received: GET /path"
-  │
-  ├── Run FilterChain
-  │     └── Blocked (e.g., rate limited)? → Send 429 response
-  │
-  ├── Route request (Router)
-  │     ├── Route found → Execute handler → Get response
-  │     └── 404 + GET? → Try static file
-  │           ├── "/" → rewrite to "/index.html"
-  │           ├── StaticFileHandler.get(path)
-  │           │     ├── Cache hit → Serve from cache
-  │           │     ├── Disk hit → Read, cache, serve
-  │           │     ├── JAR hit → Read, cache, serve
-  │           │     └── Not found → Keep 404
-  │           └── File read error → 500
-  │
-  ├── Send response to client
-  │
-  └── Close socket (finally)
+Socket:                       OS file descriptor + kernel buffers (~8 KB send + ~8 KB recv)
+InputStream wrapper:          ~32 bytes
+OutputStream wrapper:         ~32 bytes
+HttpRequest:                  ~200 bytes (fields) + body.length
+HttpResponse:                 ~200 bytes (fields) + body.length
+String[] from path.split():   ~200 bytes (for typical paths)
+RequestProcessor object:      ~48 bytes (4 reference fields + header)
+
+Approximate total per connection: ~16.5 KB + request body + response body
+
+For a typical API response (1 KB body): ~18 KB per connection
+For serving tech.jpg (10 MB): ~10 MB per connection (dominated by file bytes)
 ```
+
+With 100 concurrent connections serving API responses: **~1.8 MB** of heap (trivial).
+With 100 concurrent connections serving 10MB images: **~1 GB** of heap (significant).
 
 ---
 
 ## Key Design Notes
 
-- **One request per instance**: Each `RequestProcessor` handles exactly one request, then the socket is closed. This is **HTTP/1.0 behavior** (no keep-alive / connection reuse).
-- **Static file fallback**: Only triggers for `GET` requests that don't match any route. POST/PUT/DELETE to non-existent routes always return 404.
-- **Root path rewrite**: `/ → /index.html` is hardcoded, similar to how Apache/Nginx handle `DirectoryIndex`.
-- **Socket always closed**: The `finally` block guarantees no socket leaks.
+- **One request per connection:** `run()` handles exactly one request and then closes the socket. No HTTP keep-alive or connection reuse.
+- **Fallback is GET-only + 404-only:** Static file serving triggers only when the router returns 404. POST to a non-existent route returns 404; wrong-method requests return 405 without fallback.
+- **Root path hardcoded:** `/` → `/index.html` rewrite is inline. No configurable default document.
+- **Single response send:** Both successful and rate-limited responses go through one `response.send()` call at the end.
+- **Shared dependencies are thread-safe:** Router (read-only), FilterChain (read-only), StaticFileHandler (synchronized cache), RateLimiter (per-bucket locking).

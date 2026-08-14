@@ -15,15 +15,13 @@
 ## Line-by-Line Explanation
 
 ```java
-package com.Shreyansh.webserver.http;                          // Line 1: Package declaration
-```
-
-```java
-public enum HttpStatus {                                       // Line 3: Enum declaration
-    OK(200, "Ok"),                                             // Line 4: 200 OK — Request succeeded
-    NOT_FOUND(404, "Not Found"),                               // Line 5: 404 Not Found — No matching route or file
-    INTERNAL_ERROR(500, "Internal Server Error"),              // Line 6: 500 ISE — Unexpected server error
-    TOO_MANY_REQUESTS(429, "Too Many Requests");               // Line 7: 429 TMR — Rate limit exceeded
+public enum HttpStatus {
+    OK(200, "Ok"),
+    BAD_REQUEST(400, "Bad Request"),
+    NOT_FOUND(404, "Not Found"),
+    METHOD_NOT_ALLOWED(405, "Method Not Allowed"),
+    TOO_MANY_REQUESTS(429, "Too Many Requests"),
+    INTERNAL_ERROR(500, "Internal Server Error");
 ```
 
 ### Supported Status Codes
@@ -31,37 +29,35 @@ public enum HttpStatus {                                       // Line 3: Enum d
 | Enum Value | Code | Message | When Used |
 |------------|------|---------|-----------|
 | `OK` | 200 | "Ok" | Successful API response or static file served |
-| `NOT_FOUND` | 404 | "Not Found" | No route matched and no static file found |
+| `BAD_REQUEST` | 400 | "Bad Request" | Malformed client request (reserved for future parser-level responses) |
+| `NOT_FOUND` | 404 | "Not Found" | No matching route and no static file found |
+| `METHOD_NOT_ALLOWED` | 405 | "Method Not Allowed" | Path exists in trie but no handler registered for the requested HTTP method |
+| `TOO_MANY_REQUESTS` | 429 | "Too Many Requests" | Rate limiter threshold exceeded (>100 req/sec per IP by default) |
 | `INTERNAL_ERROR` | 500 | "Internal Server Error" | Exception during request processing, file read error, or reflection invocation failure |
-| `TOO_MANY_REQUESTS` | 429 | "Too Many Requests" | Rate limiter threshold exceeded (>100 req/sec per IP) |
 
-### Fields and Constructor (Lines 9–14)
+### Fields and Constructor (Lines 11–17)
 
 ```java
-    private final int code;                                    // Line 9: Numeric HTTP status code
-    private final String message;                              // Line 10: Human-readable reason phrase
+    private final int code;
+    private final String message;
 
-    HttpStatus(int code, String message) {                     // Line 11: Private enum constructor
-        this.code = code;                                      // Line 12
-        this.message = message;                                // Line 13
+    HttpStatus(int code, String message) {
+        this.code = code;
+        this.message = message;
     }
 ```
 
-### Getter Methods (Lines 15–20)
+### Getter Methods (Lines 19–25)
 
 ```java
-    public int getCode() {                                     // Line 15
-        return code;                                           // Line 16: Returns 200, 404, 500, or 429
-    }
-
-    public String getMessage() {                               // Line 18
-        return message;                                        // Line 19: Returns "Ok", "Not Found", etc.
-    }
+    public int getCode() { return code; }
+    public String getMessage() { return message; }
 ```
 
 These are used by `HttpResponse.send()` to construct the HTTP status line:
 ```
 HTTP/1.1 200 Ok\r\n
+HTTP/1.1 405 Method Not Allowed\r\n
 ```
 
 ---
@@ -69,11 +65,15 @@ HTTP/1.1 200 Ok\r\n
 ## Usage
 
 ```java
-response.setStatus(HttpStatus.OK);               // 200
-response.setStatus(HttpStatus.NOT_FOUND);         // 404
-response.setStatus(HttpStatus.INTERNAL_ERROR);    // 500
-response.setStatus(HttpStatus.TOO_MANY_REQUESTS); // 429
+response.setStatus(HttpStatus.OK);                  // 200
+response.setStatus(HttpStatus.BAD_REQUEST);         // 400
+response.setStatus(HttpStatus.NOT_FOUND);           // 404
+response.setStatus(HttpStatus.METHOD_NOT_ALLOWED);  // 405 — Router returns this when path exists but method doesn't match
+response.setStatus(HttpStatus.TOO_MANY_REQUESTS);  // 429
+response.setStatus(HttpStatus.INTERNAL_ERROR);      // 500
 ```
+
+**405 in practice:** When a client sends `DELETE /api/status` but only `GET /api/status` is registered, `Router.route()` returns 405 with body `{"error": "Method Not Allowed"}` instead of incorrectly returning 404.
 
 ---
 

@@ -53,6 +53,7 @@ public class ServerIntegrationTest {
 
     @AfterAll
     public static void teardown() {
+        server.stop();
         serverThread.interrupt();
     }
 

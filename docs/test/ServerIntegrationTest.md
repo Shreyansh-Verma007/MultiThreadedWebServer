@@ -48,16 +48,17 @@ public static void setup() throws Exception {                  // Line 35: Runs 
 - **Dummy package scan**: `"com.Shreyansh.webserver.dummy"` — scans a non-existent package so no production controllers interfere with tests.
 - **`Thread.sleep(1500)`**: Gives the server time to bind to the port before tests start.
 
-### `@AfterAll teardown()` — Cleanup (Lines 54–57)
+### `@AfterAll teardown()` — Cleanup (Lines 54–58)
 
 ```java
 @AfterAll
 public static void teardown() {                                // Line 55
-    serverThread.interrupt();                                  // Line 56: Signal the server thread to stop
+    server.stop();                                             // Line 56: Gracefully stop the server socket & thread pool
+    serverThread.interrupt();                                  // Line 57: Interrupt the server thread
 }
 ```
 
-Interrupts the server thread after all tests complete.
+Calls `server.stop()` to close the server socket and shut down the thread pool, then interrupts the server thread after all tests complete.
 
 ---
 

@@ -37,6 +37,12 @@ public class Router {
         String path = request.getPath();
         HttpMethod httpMethod = request.getMethod();
 
+        // Strip query string before routing — "/api/search?q=hello" → "/api/search"
+        int queryIndex = path.indexOf('?');
+        if (queryIndex != -1) {
+            path = path.substring(0, queryIndex);
+        }
+
         String[] segments = path.split("/");
         TrieNode currentNode = root;
 
@@ -51,11 +57,17 @@ public class Router {
             }
             currentNode = currentNode.getChildren().get(segment);
         }
+
         if (currentNode.getHandlers().containsKey(httpMethod)) {
             RouteHandler routeHandler = currentNode.getHandlers().get(httpMethod);
             return routeHandler.handle(request);
-        }
-        else {
+        } else if (!currentNode.getHandlers().isEmpty()) {
+            // Path exists but method doesn't match — 405 Method Not Allowed (HTTP-spec compliant)
+            HttpResponse httpResponse = new HttpResponse();
+            httpResponse.setStatus(HttpStatus.METHOD_NOT_ALLOWED);
+            httpResponse.setBody("{\"error\": \"Method Not Allowed\"}");
+            return httpResponse;
+        } else {
             HttpResponse httpResponse = new HttpResponse();
             httpResponse.setStatus(HttpStatus.NOT_FOUND);
             return httpResponse;

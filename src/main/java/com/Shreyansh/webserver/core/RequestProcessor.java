@@ -47,7 +47,7 @@ public class RequestProcessor implements Runnable {
                     String path = request.getPath().equals("/") ? "/index.html" : request.getPath();
 
                     try {
-                        LRUCache.cachedFile file = fileHandler.get(path);
+                        LRUCache.CachedFile file = fileHandler.get(path);
 
                         if (file != null) {
                             response.setStatus(HttpStatus.OK);

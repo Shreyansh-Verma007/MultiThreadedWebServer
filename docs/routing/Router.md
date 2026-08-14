@@ -2,39 +2,76 @@
 
 **Package:** `com.Shreyansh.webserver.routing`  
 **Path:** `src/main/java/com/Shreyansh/webserver/routing/Router.java`  
-**Role:** Core URL routing engine using a trie (prefix tree) data structure. Matches incoming requests to registered handlers and supports annotation-based controller registration.
+**Role:** Core URL routing engine using a trie (prefix tree) data structure. Matches incoming requests to registered handlers and supports annotation-based controller registration via Java Reflection.
 
 ---
 
 ## File Overview
 
-The `Router` is the **central routing engine** of the web server. It has two main responsibilities:
+The `Router` is the **central routing engine** of the web server. It has three responsibilities:
 
-1. **Route registration**: Stores URL path → handler mappings in a trie data structure.
-2. **Route matching**: Looks up incoming request paths in the trie and invokes the matching handler.
-
-It also provides **controller registration** via reflection — scanning a controller object's methods for `@GetMapping` and `@PostMapping` annotations.
+1. **Route registration (`addRoute`):** Inserts a URL path + HTTP method + handler into the trie
+2. **Route matching (`route`):** Looks up an incoming request's path in the trie and invokes the matching handler
+3. **Controller registration (`registerController`):** Uses Java Reflection to scan a controller object's methods for `@GetMapping`/`@PostMapping` annotations and registers them as routes
 
 ---
 
-## Trie Data Structure
+## Why a Trie? (Data Structure Selection)
 
-The router uses a **trie (prefix tree)** where each node represents a URL path segment. This enables O(n) route matching where n is the number of path segments.
+### The Alternatives Considered
+
+| Approach | Lookup Time | Path Parameters? | Prefix Sharing? | Memory |
+|----------|------------|:-:|:-:|--------|
+| `HashMap<String, Handler>` | O(1) amortized* | ❌ Needs regex scan | ❌ Full path per key | Lower for few routes |
+| `List<Route>` linear scan | O(N) where N = total routes | ✅ Via regex matching | ❌ | Lowest |
+| **Trie (our choice)** | O(K) where K = path segments | ✅ Future support | ✅ Shared prefixes | Moderate |
+| Radix tree (compressed trie) | O(K) with better constants | ✅ | ✅ More compact | Lower than trie |
+
+*HashMap lookup is O(1) for the map operation, but O(L) for string hashing where L = path string length. So for `/api/v2/users/profile` (22 chars), the hash computation traverses all 22 characters.
+
+### Why Trie Wins for URL Routing
+
+1. **O(K) is optimal for hierarchical paths.** URLs are inherently hierarchical (`/segment1/segment2/segment3`). A trie naturally represents this hierarchy — each node is a path segment. Lookup traverses exactly K nodes for K segments.
+
+2. **Prefix sharing saves memory.** Routes `/api/users`, `/api/posts`, `/api/comments` share the `api` prefix node. With 50 routes under `/api/v1/*`, the `api` and `v1` nodes are allocated once.
+
+3. **Future path parameters.** The trie can be extended to support `/users/{id}` by treating `{id}` as a wildcard node that matches any segment. This is how Express.js, Spring, and FastAPI implement dynamic routing. A flat HashMap cannot do this without regex scanning all keys.
+
+4. **HTTP method dispatch is built-in.** Each trie node stores a `Map<HttpMethod, RouteHandler>`. This means `GET /users` and `POST /users` share the same node — the method dispatch happens at the leaf, not in the key.
+
+---
+
+## Trie Structure Visualization
+
+For registered routes `GET /api/status`, `GET /api/users`, `POST /api/users`:
 
 ```
-Example routes registered:
-  GET /api/status
-  GET /api/users
-  POST /api/users
+TrieNode (root)
+  └── children: { "api" → TrieNode@1 }
 
-Trie structure:
-  ROOT
-   └── "api"
-         ├── "status"  →  handlers: { GET: getStatus() }
-         └── "users"   →  handlers: { GET: getUsers(), POST: createUser() }
+TrieNode@1 (represents "/api")
+  ├── children: {
+  │     "status" → TrieNode@2,
+  │     "users"  → TrieNode@3
+  │   }
+  └── handlers: { }    ← no handler for GET/POST /api itself
+
+TrieNode@2 (represents "/api/status")
+  ├── children: { }    ← leaf node
+  └── handlers: { GET → λ(DemoController.getStatus) }
+
+TrieNode@3 (represents "/api/users")
+  ├── children: { }    ← leaf node
+  └── handlers: { GET → λ(getUsers), POST → λ(createUser) }
 ```
 
-Each `TrieNode` stores a map of `HttpMethod → RouteHandler` at its position. This allows different handlers for different HTTP methods on the same path.
+**Memory per node:** Each `TrieNode` contains two `HashMap` instances:
+- `children: HashMap<String, TrieNode>` → ~48 bytes base + ~32 bytes per entry
+- `handlers: HashMap<HttpMethod, RouteHandler>` → ~48 bytes base + ~32 bytes per entry
+- Object header: ~16 bytes
+- **Total per node: ~112-160 bytes** depending on number of children/handlers
+
+For a typical REST API with 50 routes and shared prefixes, the trie has ~60-80 nodes = **~10-12 KB**. Negligible.
 
 ---
 
@@ -51,174 +88,237 @@ public class Router {                                          // Line 13
     }
 ```
 
-### `addRoute(HttpMethod, String, RouteHandler)` — Route Registration (Lines 20–34)
+The root node represents the `/` path. It has no handlers by default (unless someone registers a handler for `/`).
+
+### `addRoute(HttpMethod, String, RouteHandler)` — O(K) Insertion (Lines 20–34)
 
 ```java
     public void addRoute(HttpMethod httpMethod, String path, RouteHandler routeHandler) {  // Line 20
-        String[] segments = path.split("/");                   // Line 21: Split "/api/status" → ["", "api", "status"]
-        TrieNode currentNode = root;                           // Line 22: Start at root
+        String[] segments = path.split("/");                   // Line 21
+        TrieNode currentNode = root;                           // Line 22
 
-        for (String segment : segments) {                      // Line 24: Walk the trie
-            if (segment.isEmpty()) {                           // Line 25: Skip empty segments (from leading "/")
+        for (String segment : segments) {                      // Line 24
+            if (segment.isEmpty()) {                           // Line 25: Skip empty segments from leading "/"
                 continue;                                      // Line 26
             }
-            if (!currentNode.getChildren().containsKey(segment)) {  // Line 28: Node doesn't exist?
-                currentNode.getChildren().put(segment, new TrieNode());  // Line 29: Create it
+            if (!currentNode.getChildren().containsKey(segment)) {  // Line 28
+                currentNode.getChildren().put(segment, new TrieNode());  // Line 29: Create missing node
             }
-            currentNode = currentNode.getChildren().get(segment);  // Line 31: Move to next node
+            currentNode = currentNode.getChildren().get(segment);  // Line 31: Advance
         }
-        currentNode.getHandlers().put(httpMethod, routeHandler);  // Line 33: Store handler at the leaf node
+        currentNode.getHandlers().put(httpMethod, routeHandler);  // Line 33: Store handler at leaf
     }
 ```
 
 **Walk-through for `addRoute(GET, "/api/status", handler)`:**
-1. Split: `["", "api", "status"]`
-2. Skip `""` (empty)
-3. `"api"`: Create child node under root, move to it
-4. `"status"`: Create child node under "api", move to it
-5. Store `{GET: handler}` at the "status" node
 
-### `route(HttpRequest)` — Route Matching (Lines 36–63)
+```
+Input: path = "/api/status"
+Split: ["", "api", "status"]
+
+Step 1: segment="" → skip (empty)
+Step 2: segment="api"
+  → root.children.containsKey("api")? No
+  → root.children.put("api", new TrieNode())
+  → currentNode = root.children.get("api")
+Step 3: segment="status"
+  → currentNode.children.containsKey("status")? No
+  → currentNode.children.put("status", new TrieNode())
+  → currentNode = that new node
+Step 4: currentNode.handlers.put(GET, handler)   ← Handler stored at leaf
+```
+
+**Complexity:**
+```
+Time:  O(K) where K = number of non-empty segments
+       Each segment: containsKey() O(1) + put() O(1) = O(1)
+       path.split("/") itself is O(L) where L = path string length
+       Total: O(L + K), simplified to O(K) since K ≤ L
+
+Space: Creates at most K new TrieNode objects for a completely new path
+       Shared prefixes reuse existing nodes — no new allocations
+```
 
 ```java
     public HttpResponse route(HttpRequest request) {           // Line 36
-        String path = request.getPath();                       // Line 37: e.g., "/api/status"
-        HttpMethod httpMethod = request.getMethod();           // Line 38: e.g., GET
+        String path = request.getPath();                       // Line 37
+        HttpMethod httpMethod = request.getMethod();           // Line 38
 
-        String[] segments = path.split("/");                   // Line 40
-        TrieNode currentNode = root;                           // Line 41
+        // Strip query string before routing — "/api/search?q=hello" → "/api/search"
+        int queryIndex = path.indexOf('?');                    // Line 41
+        if (queryIndex != -1) {                                // Line 42
+            path = path.substring(0, queryIndex);              // Line 43
+        }
 
-        for (String segment : segments) {                      // Line 43
-            if (segment.isEmpty()) {                           // Line 44
-                continue;                                      // Line 45
+        String[] segments = path.split("/");                   // Line 46
+        TrieNode currentNode = root;                           // Line 47
+
+        for (String segment : segments) {                      // Line 49
+            if (segment.isEmpty()) {                           // Line 50
+                continue;                                      // Line 51
             }
-            if (!currentNode.getChildren().containsKey(segment)) {  // Line 47: Path segment not found in trie
-                HttpResponse httpResponse = new HttpResponse();// Line 48
-                httpResponse.setStatus(HttpStatus.NOT_FOUND);  // Line 49
-                return httpResponse;                           // Line 50: Return 404
+            if (!currentNode.getChildren().containsKey(segment)) {  // Line 53
+                HttpResponse httpResponse = new HttpResponse();// Line 54
+                httpResponse.setStatus(HttpStatus.NOT_FOUND);  // Line 55
+                return httpResponse;                           // Line 56: Path not found → 404
             }
-            currentNode = currentNode.getChildren().get(segment);  // Line 52
+            currentNode = currentNode.getChildren().get(segment);  // Line 58
         }
 ```
 
-Walk the trie following the path segments. If any segment doesn't match, return 404 immediately.
+**Lines 41-43: Query string stripping.** URLs like `/api/search?q=hello&page=2` have everything after `?` stripped before the trie walk. Without this, the trie would try to match `search?q=hello&page=2` as a single segment — which would always fail.
+
+**Line 53-56: Early termination.** If any segment doesn't exist in the trie, the path doesn't match any registered route. Return 404 immediately — no need to traverse further.
 
 ```java
-        if (currentNode.getHandlers().containsKey(httpMethod)) {  // Line 54: Handler exists for this method?
-            RouteHandler routeHandler = currentNode.getHandlers().get(httpMethod);  // Line 55
-            return routeHandler.handle(request);               // Line 56: Execute the handler!
-        }
-        else {                                                 // Line 58: Path exists but method not supported
-            HttpResponse httpResponse = new HttpResponse();    // Line 59
-            httpResponse.setStatus(HttpStatus.NOT_FOUND);      // Line 60
-            return httpResponse;                               // Line 61: Return 404 (could be 405 Method Not Allowed)
+        if (currentNode.getHandlers().containsKey(httpMethod)) {  // Line 60
+            RouteHandler routeHandler = currentNode.getHandlers().get(httpMethod);  // Line 61
+            return routeHandler.handle(request);               // Line 62: Execute the handler
+        } else if (!currentNode.getHandlers().isEmpty()) {     // Line 63
+            // Path exists but method doesn't match → 405 Method Not Allowed
+            HttpResponse httpResponse = new HttpResponse();    // Line 65
+            httpResponse.setStatus(HttpStatus.METHOD_NOT_ALLOWED);  // Line 66
+            httpResponse.setBody("{\"error\": \"Method Not Allowed\"}");  // Line 67
+            return httpResponse;                               // Line 68
+        } else {                                               // Line 69
+            HttpResponse httpResponse = new HttpResponse();    // Line 70
+            httpResponse.setStatus(HttpStatus.NOT_FOUND);      // Line 71
+            return httpResponse;                               // Line 72: No handlers at all → 404
         }
     }
 ```
 
-If the path matches but the HTTP method doesn't (e.g., `POST /api/status` when only `GET` is registered), it returns 404. Note: A more strict implementation could return **405 Method Not Allowed**.
+**Lines 63-68: 405 Method Not Allowed.** When the trie node exists and has handlers, but not for the requested HTTP method, the router now returns 405 (HTTP-spec compliant) instead of 404. The `!handlers.isEmpty()` check distinguishes "path exists, wrong method" from "trie node exists but has no handlers" (e.g., an intermediate node like `/api`).
 
-### `registerController(Object)` — Annotation-Based Registration (Lines 65–105)
+**Route matching complexity:**
+```
+Time:  O(K) for K path segments
+       Plus: handler.handle(request) includes method.invoke() — ~5-10ns after JIT warmup
+       Plus: path.split("/") — O(L) string traversal + K+1 string allocations
+
+Space: O(K) for the String[] array from split()
+       O(1) for the trie traversal itself (no new nodes created)
+```
+
+### `registerController(Object)` — Reflection-Based Registration (Lines 65–105)
 
 ```java
     public void registerController(Object controller) {        // Line 65
-        Class<?> controllerClass = controller.getClass();      // Line 66: Get the class via reflection
-        if (!controllerClass.isAnnotationPresent(RestController.class)) { return; }  // Line 67: Skip non-controllers
+        Class<?> controllerClass = controller.getClass();      // Line 66
+        if (!controllerClass.isAnnotationPresent(RestController.class)) { return; }  // Line 67
 ```
 
-**Line 67**: Double-check that the class has `@RestController`. (The `RouteScanner` already checks this, but this is a safety guard.)
+**Line 67: Guard check.** Redundant with `RouteScanner.processClass()` which already checks for `@RestController`. This is a safety guard — `registerController()` can be called from test code or manual registration without going through the scanner.
 
-#### Scanning for @GetMapping (Lines 69–86)
+#### Lambda-Wrapped Reflection (Lines 69–86)
 
 ```java
-        for (Method method : controllerClass.getDeclaredMethods()) {  // Line 69: Iterate all declared methods
-            if (method.isAnnotationPresent(GetMapping.class)) {  // Line 70: Has @GetMapping?
-                GetMapping annotation = method.getAnnotation(GetMapping.class);  // Line 71: Get the annotation
-                String path = annotation.value();              // Line 72: Extract the path (e.g., "/api/status")
-                RouteHandler handler = request -> {            // Line 73: Create a lambda handler
+        for (Method method : controllerClass.getDeclaredMethods()) {  // Line 69
+            if (method.isAnnotationPresent(GetMapping.class)) {  // Line 70
+                GetMapping annotation = method.getAnnotation(GetMapping.class);  // Line 71
+                String path = annotation.value();              // Line 72
+                RouteHandler handler = request -> {            // Line 73: Lambda captures method + controller
                     try {
-                        return (HttpResponse) method.invoke(controller, request);  // Line 75: Reflective invocation
+                        return (HttpResponse) method.invoke(controller, request);  // Line 75
                     }
                     catch (Exception e) {                      // Line 77
-                        System.err.println("Error executing GET method: " + e.getMessage());  // Line 78
-                        HttpResponse errorResponse = new HttpResponse();  // Line 79
-                        errorResponse.setStatus(HttpStatus.INTERNAL_ERROR);  // Line 80
-                        return errorResponse;                  // Line 81: Return 500 on error
+                        System.err.println("Error executing GET method: " + e.getMessage());
+                        HttpResponse errorResponse = new HttpResponse();
+                        errorResponse.setStatus(HttpStatus.INTERNAL_ERROR);
+                        return errorResponse;                  // Line 81: 500 on failure
                     }
                 };
-                this.addRoute(HttpMethod.GET, path, handler);  // Line 84: Register in the trie
-                System.out.println("Mapped GET: " + path + " onto " + controllerClass.getSimpleName() + "." + method.getName());  // Line 85
+                this.addRoute(HttpMethod.GET, path, handler);  // Line 84
+                System.out.println("Mapped GET: " + path + " onto " + controllerClass.getSimpleName() + "." + method.getName());
             }
 ```
 
-**Line 73–83**: Creates a lambda that wraps the controller method. When the route is matched later, the lambda:
-1. Invokes `method.invoke(controller, request)` — calling the actual controller method via reflection.
-2. Casts the return value to `HttpResponse`.
-3. If reflection throws an exception (e.g., the method throws), catches it and returns a 500 error response.
+**Line 73-83: The lambda closure.** This is the key pattern. The lambda captures:
+- `method` — a `java.lang.reflect.Method` object (resolved once at registration time)
+- `controller` — the controller instance (created once by `RouteScanner`)
 
-**Line 85**: Logs the route registration, e.g., `Mapped GET: /api/status onto DemoController.getStatus`.
+When the route is matched later, `handler.handle(request)` executes:
+1. `method.invoke(controller, request)` — calls `DemoController.getStatus(request)` via reflection
+2. Casts the return to `HttpResponse`
+3. If the controller method throws, catches the exception and returns 500
 
-#### Scanning for @PostMapping (Lines 87–103)
-
-```java
-            if (method.isAnnotationPresent(PostMapping.class)) {  // Line 87: Has @PostMapping?
-                PostMapping annotation = method.getAnnotation(PostMapping.class);  // Line 88
-                String path = annotation.value();              // Line 89
-                RouteHandler handler = request -> {            // Line 90
-                    try {
-                        return (HttpResponse) method.invoke(controller, request);  // Line 92
-                    }
-                    catch (Exception e) {                      // Line 94
-                        System.err.println("Error executing POST method: " + e.getMessage());  // Line 95
-                        HttpResponse errorResponse = new HttpResponse();  // Line 96
-                        errorResponse.setStatus(HttpStatus.INTERNAL_ERROR);  // Line 97
-                        return errorResponse;                  // Line 98
-                    }
-                };
-                this.addRoute(HttpMethod.POST, path, handler); // Line 101
-                System.out.println("Mapped POST: " + path + " onto " + controllerClass.getSimpleName() + "." + method.getName());  // Line 102
-            }
-        }
-    }
+**Reflection performance after JIT warmup:**
+```
+Cold (first call):           ~5000 ns (method resolution, security checks)
+Warm (calls 2-15):           ~50 ns (JVM-interpreted reflective accessor)
+Hot (after inflation at 16): ~5-10 ns (JVM generates bytecode accessor class)
 ```
 
-Identical logic to `@GetMapping`, but for `@PostMapping` and `HttpMethod.POST`.
+The JVM's "inflation" mechanism (controlled by `sun.reflect.inflationThreshold=15`) replaces the generic reflective invoker with a generated class that makes a direct method call. After warmup, the overhead of reflection is nearly zero.
 
 ---
 
-## Route Matching Example
+## Thread Safety of the Trie
+
+The trie uses **no synchronization** — no `synchronized`, no `ConcurrentHashMap`, no `volatile`. This is safe because of the **happens-before guarantee** in the Java Memory Model (JMM):
+
+```
+STARTUP PHASE (single-threaded):
+  RouteScanner.scan() → Router.registerController() → addRoute()
+  ↑ All trie writes happen here, on the main thread
+
+  Server.start() → new ServerSocket(port, backlog)
+                    ↑ ServerSocket constructor involves I/O synchronization
+                      This establishes a happens-before edge
+
+RUNTIME PHASE (multi-threaded):
+  Thread pool workers call router.route()
+  ↑ All trie reads happen here, on pool threads
+
+Because:
+  1. All writes complete before ServerSocket construction
+  2. ServerSocket construction involves monitor operations (I/O sync)
+  3. Thread pool workers are created after ServerSocket is bound
+  4. Thread creation establishes a happens-before edge (JLS §17.4.5)
+
+Therefore: All trie writes are visible to all reader threads. No synchronization needed.
+```
+
+**If dynamic route registration at runtime were added** (e.g., hot-reloading controllers), the `HashMap` inside `TrieNode` would need to be replaced with `ConcurrentHashMap` or guarded by a `ReadWriteLock`.
+
+---
+
+## Route Matching Examples
 
 ```
 Registered routes:
-  GET /api/status → DemoController.getStatus
-  POST /api/echo  → TestController.handleEcho
+  GET  /api/status → DemoController.getStatus
+  POST /api/echo   → TestController.handleEcho
 
-Incoming: GET /api/status
+Example 1: GET /api/status → ✅ 200
+  root → "api" ✓ → "status" ✓ → handlers.get(GET) ✓ → invoke → response
 
-Trie walk:
-  root → "api" → "status"
-  handlers at "status" node: { GET: handler }
-  GET exists → invoke handler → return response
+Example 2: DELETE /api/status → ❌ 405 Method Not Allowed
+  root → "api" ✓ → "status" ✓ → handlers.get(DELETE) ✗ → handlers.isEmpty()? No → return 405
 
-Incoming: DELETE /api/status
+Example 3: GET /api/unknown → ❌ 404
+  root → "api" ✓ → "unknown" ✗ → return 404 immediately (no further traversal)
 
-Trie walk:
-  root → "api" → "status"
-  handlers: { GET: handler }
-  DELETE not found → return 404
+Example 4: GET /api → ❌ 404
+  root → "api" ✓ → handlers.get(GET) ✗ → handlers.isEmpty()? Yes → return 404
 
-Incoming: GET /api/unknown
+Example 5: GET / → ❌ 404 (falls through to static file handler)
+  split("/") → ["", ""] → all segments empty → stay at root
+  root.handlers.get(GET) ✗ → return 404
+  RequestProcessor catches 404 + GET → rewrites to /index.html → StaticFileHandler
 
-Trie walk:
-  root → "api" → "unknown" not found → return 404
+Example 6: GET /api/status?verbose=true → ✅ 200
+  query string stripped: "/api/status?verbose=true" → "/api/status"
+  root → "api" ✓ → "status" ✓ → handlers.get(GET) ✓ → invoke → response
 ```
 
 ---
 
 ## Key Design Notes
 
-- **Trie-based routing**: O(n) where n = number of path segments. Much faster than iterating through a list of routes.
-- **No path parameters**: The current implementation doesn't support path parameters like `/users/{id}`. All segments are matched exactly.
-- **No wildcard routes**: No support for `*` or `**` patterns.
-- **Reflection-based handlers**: Controller methods are called via `method.invoke()`. This adds a small overhead compared to direct method calls but enables the annotation-driven programming model.
-- **404 vs 405**: When a path exists but the method doesn't match, the router returns 404 instead of the more correct 405 (Method Not Allowed).
+- **Trie-based routing:** O(K) where K = number of path segments. Optimal for hierarchical URL structures.
+- **Query string stripping:** Everything after `?` is removed before trie lookup. Query parameters are not parsed or made available to handlers.
+- **405 Method Not Allowed:** When a trie node exists with handlers but not for the requested method, 405 is returned (HTTP-spec compliant). When the node has no handlers at all (intermediate node), 404 is returned.
+- **No path parameters:** The current implementation matches segments exactly. `/users/{id}` would require wildcard nodes — a natural trie extension.
+- **No wildcard routes:** No `*` or `**` glob patterns. Express-style catch-all routes are not supported.
+- **Reflection overhead is negligible:** After JIT inflation (~15 calls), `method.invoke()` is ~5-10ns — comparable to a virtual method call.
